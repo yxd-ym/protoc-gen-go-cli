@@ -3,6 +3,7 @@ package gencli
 import (
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 
 	"go.einride.tech/protoc-gen-go-cli/cli"
@@ -31,18 +32,32 @@ func GenerateRootCommandFile(gen *protogen.Plugin, config cli.CompilerConfig) er
 	g.P("Use: ", strconv.Quote(config.Root), ",")
 	g.P("}")
 	servicesByName := getServicesByName(gen)
+	type fileService struct {
+		f *protogen.File
+		s *protogen.Service
+	}
+	services := []*fileService{}
 	for _, file := range gen.Files {
 		if !file.Generate {
 			continue
 		}
 		for _, service := range file.Services {
-			newCommandFunction := g.QualifiedGoIdent(protogen.GoIdent{
-				GoImportPath: file.GoImportPath,
-				GoName:       "New" + service.GoName + "Command",
+			services = append(services, &fileService{
+				f: file,
+				s: service,
 			})
-			serviceCommand := getServiceCommandUse(servicesByName, service)
-			g.P("cmd.AddCommand(", newCommandFunction, "(", strconv.Quote(serviceCommand), "))")
 		}
+	}
+	sort.Slice(services, func(i int, j int) bool {
+		return services[i].s.GoName < services[j].s.GoName
+	})
+	for _, service := range services {
+		newCommandFunction := g.QualifiedGoIdent(protogen.GoIdent{
+			GoImportPath: service.f.GoImportPath,
+			GoName:       "New" + service.s.GoName + "Command",
+		})
+		serviceCommand := getServiceCommandUse(servicesByName, service.s)
+		g.P("cmd.AddCommand(", newCommandFunction, "(", strconv.Quote(serviceCommand), "))")
 	}
 	g.P("return cmd")
 	g.P("}")
